@@ -1,19 +1,18 @@
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import date, time, datetime
+from datetime import datetime, date, time
 from uuid import UUID
 from app.schemas.food import FoodItemResponse
 
-class MealItemBase(BaseModel):
+class MealItemCreate(BaseModel):
     food_item_id: UUID
     quantity: int
 
-class MealItemCreate(MealItemBase):
-    pass
-
-class MealItemResponse(MealItemBase):
+class MealItemResponse(BaseModel):
     id: UUID
     meal_id: UUID
+    food_item_id: UUID
+    quantity: int
     food_item: FoodItemResponse
     
     class Config:

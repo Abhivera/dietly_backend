@@ -17,29 +17,19 @@ class VlogUpdate(BaseModel):
     image_url: Optional[str] = None
     description: Optional[str] = None
 
-class VlogCommentBase(BaseModel):
+class VlogCommentCreate(BaseModel):
     comment: str
     parent_id: Optional[UUID] = None
 
-class VlogCommentCreate(VlogCommentBase):
-    pass
-
-class VlogCommentResponse(VlogCommentBase):
+class VlogCommentResponse(BaseModel):
     id: UUID
     vlog_id: UUID
     user_id: UUID
-    user: UserResponse
+    comment: str
+    parent_id: Optional[UUID] = None
     created_at: datetime
-    replies: List["VlogCommentResponse"] = []
-    
-    class Config:
-        from_attributes = True
-
-class VlogLikeResponse(BaseModel):
-    id: UUID
-    vlog_id: UUID
-    user_id: UUID
     user: UserResponse
+    replies: List['VlogCommentResponse'] = []
     
     class Config:
         from_attributes = True
@@ -47,15 +37,11 @@ class VlogLikeResponse(BaseModel):
 class VlogResponse(VlogBase):
     id: UUID
     user_id: UUID
-    user: UserResponse
     created_at: datetime
+    user: UserResponse
     comments: List[VlogCommentResponse] = []
-    likes: List[VlogLikeResponse] = []
     likes_count: int = 0
-    comments_count: int = 0
+    is_liked: bool = False
     
     class Config:
         from_attributes = True
-
-# For forward reference
-VlogCommentResponse.model_rebuild()

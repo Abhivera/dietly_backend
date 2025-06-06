@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 
 class ExerciseItemBase(BaseModel):
@@ -25,17 +25,17 @@ class ExerciseItemResponse(ExerciseItemBase):
     class Config:
         from_attributes = True
 
-class UserExerciseBase(BaseModel):
+class UserExerciseCreate(BaseModel):
     exercise_item_id: UUID
     date: datetime
     duration_mins: int
 
-class UserExerciseCreate(UserExerciseBase):
-    pass
-
-class UserExerciseResponse(UserExerciseBase):
+class UserExerciseResponse(BaseModel):
     id: UUID
     user_id: UUID
+    exercise_item_id: UUID
+    date: datetime
+    duration_mins: int
     exercise_item: ExerciseItemResponse
     
     class Config:

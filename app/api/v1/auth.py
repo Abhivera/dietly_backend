@@ -55,3 +55,11 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_active_user)):
     return current_user
+
+@router.post("/logout")
+def logout(current_user: User = Depends(get_current_active_user)):
+    """
+    Logout endpoint - In JWT implementation, logout is typically handled client-side
+    by removing the token. Server-side logout would require token blacklisting.
+    """
+    return {"message": "Successfully logged out. Please remove the token from client."}
