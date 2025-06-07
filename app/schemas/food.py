@@ -7,6 +7,7 @@ class FoodItemBase(BaseModel):
     name: str
     calories: int
     image_url: Optional[str] = None
+    is_predefined: Optional[bool] = False
 
 class FoodItemCreate(FoodItemBase):
     pass
