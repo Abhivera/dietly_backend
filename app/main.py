@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 
 from app.core.config import settings
-from app.api.v1 import auth,users,foods,exercises,meals,analytics, recommendations, vlogs # Uncomment others as needed
+from app.api.v1 import auth,users,foods,exercises,meals,analytics,recommendations,vlogs # Uncomment others as needed
 
 from app.core.database import get_db
 

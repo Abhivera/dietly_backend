@@ -7,6 +7,8 @@ class ExerciseItemBase(BaseModel):
     name: str
     duration_mins: int
     calories_burnt: int
+    is_predefined: Optional[bool] = False
+    image_url: Optional[str] = None 
 
 class ExerciseItemCreate(ExerciseItemBase):
     pass
@@ -15,6 +17,7 @@ class ExerciseItemUpdate(BaseModel):
     name: Optional[str] = None
     duration_mins: Optional[int] = None
     calories_burnt: Optional[int] = None
+    image_url: Optional[str] = None 
 
 class ExerciseItemResponse(ExerciseItemBase):
     id: UUID

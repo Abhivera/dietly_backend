@@ -8,6 +8,9 @@ from app.models.user import User
 
 security = HTTPBearer()
 
+
+
+
 def get_current_user(
     db: Session = Depends(get_db),
     credentials: HTTPAuthorizationCredentials = Depends(security)
