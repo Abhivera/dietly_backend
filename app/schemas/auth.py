@@ -11,3 +11,13 @@ class TokenData(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class GoogleAuthRequest(BaseModel):
+    code: str
+    state: Optional[str] = None
+
+class GoogleAuthResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: dict
+    is_new_user: bool
