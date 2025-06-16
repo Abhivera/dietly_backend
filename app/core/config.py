@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     # openai_api_key: str
     # Gemini 
     gemini_api_key: str
+    google_client_id: str
+    google_client_secret: str
+    google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+    
     
     # File Upload
     upload_dir: str = "uploads"
