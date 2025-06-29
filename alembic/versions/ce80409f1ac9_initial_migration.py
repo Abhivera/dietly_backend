@@ -1,8 +1,8 @@
-"""test  migration
+"""initial migration
 
-Revision ID: 8abd4878f60d
+Revision ID: ce80409f1ac9
 Revises: 
-Create Date: 2025-06-14 13:59:53.659578
+Create Date: 2025-06-29 18:38:52.973971
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '8abd4878f60d'
+revision: str = 'ce80409f1ac9'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -26,7 +26,7 @@ def upgrade() -> None:
     sa.Column('email', sa.String(), nullable=False),
     sa.Column('username', sa.String(), nullable=False),
     sa.Column('full_name', sa.String(), nullable=True),
-    sa.Column('hashed_password', sa.String(), nullable=False),
+    sa.Column('hashed_password', sa.String(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.Column('is_superuser', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
@@ -48,6 +48,13 @@ def upgrade() -> None:
     sa.Column('owner_id', sa.Integer(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=True),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+    sa.Column('is_food', sa.Boolean(), nullable=True),
+    sa.Column('analysis_description', sa.Text(), nullable=True),
+    sa.Column('food_items', sa.JSON(), nullable=True),
+    sa.Column('estimated_calories', sa.Integer(), nullable=True),
+    sa.Column('nutrients', sa.JSON(), nullable=True),
+    sa.Column('analysis_confidence', sa.Float(), nullable=True),
+    sa.Column('analysis_completed', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
