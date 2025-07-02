@@ -1,28 +1,47 @@
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 import os
 
 class Settings(BaseSettings):
   
-    database_url: str="postgresql+psycopg2://postgres:rbLmnGuRRJaCmYToFRPLfLsmowVInqTp@yamanote.proxy.rlwy.net:10411/railway"
+    database_url: str
 
     
     # Security
     secret_key: str
     algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 1440
+
+
+    # Email settings
+    smtp_server: str
+    smtp_port: int
+    smtp_username: Optional[str] 
+    smtp_password: Optional[str] 
+    from_email: Optional[str]
+
+  
+    # Frontend URL for password reset links
+    frontend_url: str 
+    
+    # Rate limiting
+    password_reset_rate_limit: int = 3  # per hour
+    login_rate_limit: int = 5  # per minute
     
     # OpenAI
     # openai_api_key: str
     # Gemini 
     gemini_api_key: str
   
-    
+     # Add these:
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_region: str
+    aws_s3_bucket_name: str
     
     # File Upload
     upload_dir: str = "uploads"
-    # max_file_size: int = 10485760  # 10MB
-    # allowed_extensions: List[str] = ["jpg", "jpeg", "png", "gif", "webp"]
+  
     
     # Environment
     environment: str = "development"

@@ -5,6 +5,8 @@ from typing import List, Dict, Optional
 import requests
 import asyncio
 from pathlib import Path
+from io import BytesIO
+from PIL import Image
 from app.core.config import settings
 
 # Set up logging
@@ -19,32 +21,77 @@ class LLMService:
         if not self.api_key:
             raise ValueError("Gemini API key is not configured")
     
-    def _get_mime_type(self, image_path: str) -> str:
-        """Determine MIME type based on file extension"""
-        extension = Path(image_path).suffix.lower()
-        mime_types = {
-            '.jpg': 'image/jpeg',
-            '.jpeg': 'image/jpeg',
-            '.png': 'image/png',
-            '.gif': 'image/gif',
-            '.webp': 'image/webp'
-        }
-        return mime_types.get(extension, 'image/jpeg')
+    def _get_mime_type(self, image_path: str = None, content_type: str = None, image_content: bytes = None) -> str:
+        """Determine MIME type based on file extension, content type, or image content"""
+        
+        # If content_type is provided (from upload), use it
+        if content_type:
+            if 'jpeg' in content_type or 'jpg' in content_type:
+                return 'image/jpeg'
+            elif 'png' in content_type:
+                return 'image/png'
+            elif 'gif' in content_type:
+                return 'image/gif'
+            elif 'webp' in content_type:
+                return 'image/webp'
+        
+        # If image_path is provided, use file extension
+        if image_path:
+            extension = Path(image_path).suffix.lower()
+            mime_types = {
+                '.jpg': 'image/jpeg',
+                '.jpeg': 'image/jpeg',
+                '.png': 'image/png',
+                '.gif': 'image/gif',
+                '.webp': 'image/webp'
+            }
+            return mime_types.get(extension, 'image/jpeg')
+        
+        # Try to detect from image content using PIL
+        if image_content:
+            try:
+                image = Image.open(BytesIO(image_content))
+                format_lower = image.format.lower()
+                if format_lower == 'jpeg':
+                    return 'image/jpeg'
+                elif format_lower == 'png':
+                    return 'image/png'
+                elif format_lower == 'gif':
+                    return 'image/gif'
+                elif format_lower == 'webp':
+                    return 'image/webp'
+            except Exception as e:
+                logger.warning(f"Could not detect image format from content: {str(e)}")
+        
+        # Default fallback
+        return 'image/jpeg'
     
-    def _encode_image(self, image_path: str) -> tuple[str, str]:
-        """Encode image to base64 and return with MIME type"""
+    def _encode_image_from_path(self, image_path: str) -> tuple[str, str]:
+        """Encode image from file path to base64 and return with MIME type"""
         try:
             if not Path(image_path).exists():
                 raise FileNotFoundError(f"Image file not found: {image_path}")
             
             with open(image_path, "rb") as image_file:
-                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+                image_content = image_file.read()
+                base64_image = base64.b64encode(image_content).decode('utf-8')
             
-            mime_type = self._get_mime_type(image_path)
+            mime_type = self._get_mime_type(image_path=image_path)
             return base64_image, mime_type
             
         except Exception as e:
             logger.error(f"Error encoding image {image_path}: {str(e)}")
+            raise
+
+    def _encode_image_from_bytes(self, image_content: bytes, content_type: str = None) -> tuple[str, str]:
+        """Encode image from bytes to base64 and return with MIME type"""
+        try:
+            base64_image = base64.b64encode(image_content).decode('utf-8')
+            mime_type = self._get_mime_type(content_type=content_type, image_content=image_content)
+            return base64_image, mime_type
+            
+        except Exception as e:
+            logger.error(f"Error encoding image from bytes: {str(e)}")
             raise
 
     def _make_api_request(self, payload: Dict) -> requests.Response:
@@ -143,15 +190,43 @@ class LLMService:
 
     async def analyze_image(self, image_path: str) -> Dict[str, any]:
         """
-        Analyze a food image and return nutritional information.
+        Analyze a food image from file path and return nutritional information.
         """
         logger.info(f"Starting image analysis for: {image_path}")
         
         try:
-            # Encode image
-            base64_image, mime_type = self._encode_image(image_path)
+            # Encode image from file path
+            base64_image, mime_type = self._encode_image_from_path(image_path)
             logger.info(f"Image encoded successfully. MIME type: {mime_type}")
             
+            return await self._analyze_image_with_data(base64_image, mime_type)
+            
+        except Exception as e:
+            logger.error(f"Error in analyze_image: {str(e)}", exc_info=True)
+            return self._get_error_response(str(e))
+
+    async def analyze_image_content(self, image_content: bytes, content_type: str = None) -> Dict[str, any]:
+        """
+        Analyze a food image from raw bytes content.
+        """
+        logger.info(f"Starting image analysis from bytes content. Content type: {content_type}")
+        
+        try:
+            # Encode image from bytes
+            base64_image, mime_type = self._encode_image_from_bytes(image_content, content_type)
+            logger.info(f"Image encoded successfully. MIME type: {mime_type}")
+            
+            return await self._analyze_image_with_data(base64_image, mime_type)
+            
+        except Exception as e:
+            logger.error(f"Error in analyze_image_content: {str(e)}", exc_info=True)
+            return self._get_error_response(str(e))
+
+    async def _analyze_image_with_data(self, base64_image: str, mime_type: str) -> Dict[str, any]:
+        """
+        Core method to analyze image with base64 data and MIME type.
+        """
+        try:
             # Prepare payload
             payload = {
                 "contents": [
@@ -166,11 +241,12 @@ class LLMService:
                                     "- 'description': single sentence describing what's in the image\n"
                                     "- 'calories': estimated total calories as a number (0 if no food)\n"
                                     "- 'nutrients': object with keys 'protein', 'carbs', 'fat', 'sugar' (all numbers in grams, all 0 if no food)\n"
-                                    "- 'confidence': confidence score between 0 and 1\n\n"
+                                    "- 'confidence': confidence score between 0 and 1\n"
+                                    "- 'exercise_recommendations': object with keys 'steps' (int, number of steps to burn calories) and 'walking_km' (float, km to walk to burn calories)\n\n"
                                     "Example for food image:\n"
-                                    '{"is_food":true,"food_items":["apple","banana"],"description":"Fresh fruits on a plate","calories":120,"nutrients":{"protein":1,"carbs":30,"fat":0,"sugar":25},"confidence":0.85}\n\n'
+                                    '{"is_food":true,"food_items":["apple","banana"],"description":"Fresh fruits on a plate","calories":120,"nutrients":{"protein":1,"carbs":30,"fat":0,"sugar":25},"confidence":0.85,"exercise_recommendations":{"steps":2400,"walking_km":2.4}}\n\n'
                                     "Example for non-food image:\n"
-                                    '{"is_food":false,"food_items":[],"description":"A person sitting in a chair","calories":0,"nutrients":{"protein":0,"carbs":0,"fat":0,"sugar":0},"confidence":0.90}'
+                                    '{"is_food":false,"food_items":[],"description":"A person sitting in a chair","calories":0,"nutrients":{"protein":0,"carbs":0,"fat":0,"sugar":0},"confidence":0.90,"exercise_recommendations":{"steps":0,"walking_km":0.0}}'
                                 )
                             },
                             {
@@ -201,37 +277,71 @@ class LLMService:
             # Parse response
             result = self._parse_response(response)
             
-            # Validate result structure
-            required_keys = ['is_food', 'food_items', 'description', 'calories', 'nutrients', 'confidence']
-            for key in required_keys:
-                if key not in result:
-                    logger.warning(f"Missing key '{key}' in result, adding default")
-                    if key == 'is_food':
-                        result[key] = False
-                    elif key == 'food_items':
-                        result[key] = []
-                    elif key == 'description':
-                        result[key] = "Image analyzed"
-                    elif key == 'calories':
-                        result[key] = 0
-                    elif key == 'nutrients':
-                        result[key] = {"protein": 0, "carbs": 0, "fat": 0, "sugar": 0}
-                    elif key == 'confidence':
-                        result[key] = 0.5
+            # Validate and fix result structure
+            result = self._validate_and_fix_result(result)
             
             logger.info("Image analysis completed successfully")
             return result
             
         except Exception as e:
-            logger.error(f"Error in analyze_image: {str(e)}", exc_info=True)
-            return {
-                "description": f"Error analyzing image: {str(e)}",
-                "is_food": False,
-                "food_items": [],
-                "calories": 0,
-                "nutrients": {"protein": 0, "carbs": 0, "fat": 0, "sugar": 0},
-                "confidence": 0.0
-            }
+            logger.error(f"Error in _analyze_image_with_data: {str(e)}", exc_info=True)
+            return self._get_error_response(str(e))
+
+    def _validate_and_fix_result(self, result: Dict) -> Dict:
+        """Validate result structure and add missing keys with defaults"""
+        required_keys = ['is_food', 'food_items', 'description', 'calories', 'nutrients', 'confidence', 'exercise_recommendations']
+        
+        for key in required_keys:
+            if key not in result:
+                logger.warning(f"Missing key '{key}' in result, adding default")
+                if key == 'is_food':
+                    result[key] = False
+                elif key == 'food_items':
+                    result[key] = []
+                elif key == 'description':
+                    result[key] = "Image analyzed"
+                elif key == 'calories':
+                    result[key] = 0
+                elif key == 'nutrients':
+                    result[key] = {"protein": 0, "carbs": 0, "fat": 0, "sugar": 0}
+                elif key == 'confidence':
+                    result[key] = 0.5
+                elif key == 'exercise_recommendations':
+                    cals = result.get('calories', 0)
+                    result[key] = {"steps": int(cals*20), "walking_km": round(cals/50, 2)}
+        
+        # Ensure nutrients has all required keys
+        if 'nutrients' in result and isinstance(result['nutrients'], dict):
+            nutrient_keys = ['protein', 'carbs', 'fat', 'sugar']
+            for nutrient in nutrient_keys:
+                if nutrient not in result['nutrients']:
+                    result['nutrients'][nutrient] = 0
+        
+        # Ensure exercise_recommendations has both keys
+        if 'exercise_recommendations' in result:
+            rec = result['exercise_recommendations']
+            cals = result.get('calories', 0)
+            if not isinstance(rec, dict):
+                rec = {"steps": int(cals*20), "walking_km": round(cals/50, 2)}
+            if 'steps' not in rec:
+                rec['steps'] = int(cals*20)
+            if 'walking_km' not in rec:
+                rec['walking_km'] = round(cals/50, 2)
+            result['exercise_recommendations'] = rec
+        
+        return result
+
+    def _get_error_response(self, error_message: str) -> Dict:
+        """Generate standard error response"""
+        return {
+            "description": f"Error analyzing image: {error_message}",
+            "is_food": False,
+            "food_items": [],
+            "calories": 0,
+            "nutrients": {"protein": 0, "carbs": 0, "fat": 0, "sugar": 0},
+            "confidence": 0.0,
+            "exercise_recommendations": {"steps": 0, "walking_km": 0.0}
+        }
 
     # Test method for debugging
     async def test_api_connection(self) -> bool:

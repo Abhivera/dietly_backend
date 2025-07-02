@@ -7,36 +7,49 @@ class Image(Base):
     __tablename__ = "images"
     
     id = Column(Integer, primary_key=True, index=True)
-    filename = Column(String, nullable=False)
+    filename = Column(String, nullable=False)  # S3 key/filename
     original_filename = Column(String, nullable=False)
-    file_path = Column(String, nullable=False)
+    file_url = Column(String(500), nullable=False)    # S3 URL
+    s3_key = Column(String(255), nullable=False)      # S3 object key
+    s3_bucket = Column(String(100), nullable=False)   # S3 bucket name
     file_size = Column(Integer, nullable=False)
     content_type = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     tags = Column(Text, nullable=True)
-    owner_id = Column(Integer, ForeignKey("users.id"))
+    owner_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Analysis fields
-    is_food = Column(Boolean, nullable=True)  # True if image contains food, False if not
+    is_food = Column(Boolean, nullable=True)
+    is_meal = Column(Boolean, nullable=True, default=False)
     analysis_description = Column(Text, nullable=True)
-    food_items = Column(JSON, nullable=True)  # Store as JSON array
+    food_items = Column(JSON, nullable=True)
     estimated_calories = Column(Integer, nullable=True)
-    nutrients = Column(JSON, nullable=True)  # Store as JSON object
+    nutrients = Column(JSON, nullable=True)
     analysis_confidence = Column(Float, nullable=True)
     analysis_completed = Column(DateTime(timezone=True), nullable=True)
+    
+    # Presigned URL fields
+    presigned_url = Column(String(1000), nullable=True)
+    presigned_url_expires_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relationship
     owner = relationship("User", back_populates="images")
     
+    is_deleted = Column(Boolean, default=False)
+    
     def to_dict(self):
         """Convert model to dictionary including analysis data"""
+        calories = self.estimated_calories or 0
+        exercise_recommendations = {"steps": int(calories * 20), "walking_km": round(calories / 50, 2)}
         return {
             "id": self.id,
             "filename": self.filename,
             "original_filename": self.original_filename,
-            "file_path": self.file_path,
+            "file_url": self.file_url,
+            "s3_key": self.s3_key,
+            "s3_bucket": self.s3_bucket,
             "file_size": self.file_size,
             "content_type": self.content_type,
             "description": self.description,
@@ -46,11 +59,13 @@ class Image(Base):
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "analysis": {
                 "is_food": self.is_food,
+                "is_meal": self.is_meal,
                 "food_items": self.food_items or [],
                 "description": self.analysis_description,
                 "calories": self.estimated_calories,
                 "nutrients": self.nutrients or {},
                 "confidence": self.analysis_confidence,
-                "completed_at": self.analysis_completed.isoformat() if self.analysis_completed else None
+                "completed_at": self.analysis_completed.isoformat() if self.analysis_completed else None,
+                "exercise_recommendations": exercise_recommendations
             }
         }
