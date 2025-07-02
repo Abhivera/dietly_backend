@@ -281,11 +281,12 @@ class ImageService:
         return await self.analyze_existing_image(image_id, user_id)
 
     def delete_image(self, image_id: int, user_id: int) -> Dict:
-        """Delete image from both database and S3"""
+        """Soft delete image (set is_deleted=True) and delete from S3"""
         try:
             image = self.db.query(Image).filter(
                 Image.id == image_id,
-                Image.owner_id == user_id
+                Image.owner_id == user_id,
+                Image.is_deleted == False
             ).first()
 
             if not image:
@@ -295,13 +296,13 @@ class ImageService:
             if not s3_deleted:
                 logger.warning(f"Failed to delete S3 object: {image.s3_key}")
 
-            self.db.delete(image)
+            image.is_deleted = True
             self.db.commit()
 
-            return {"success": True, "message": "Image deleted successfully"}
+            return {"success": True, "message": "Image soft-deleted successfully"}
 
         except Exception as e:
-            logger.error(f"Error deleting image: {str(e)}")
+            logger.error(f"Error soft-deleting image: {str(e)}")
             self.db.rollback()
             return {"error": f"Delete failed: {str(e)}"}
 
@@ -310,18 +311,16 @@ class ImageService:
         try:
             image = self.db.query(Image).filter(
                 Image.id == image_id,
-                Image.owner_id == user_id
+                Image.owner_id == user_id,
+                Image.is_deleted == False
             ).first()
-
             if not image:
                 return None
-
             image_dict = image.to_dict()
             if 'analysis' in image_dict:
                 if 'exercise_recommendations' not in image_dict['analysis'] or not image_dict['analysis']['exercise_recommendations']:
                     image_dict['analysis']['exercise_recommendations'] = {"steps": 0, "walking_km": 0}
             return image_dict
-
         except Exception as e:
             logger.error(f"Error getting image with analysis: {str(e)}")
             return None
@@ -332,7 +331,7 @@ class ImageService:
         Supports filtering by date, week, or month. Only one filter is allowed at a time, with priority: date > week > month.
         """
         try:
-            query = self.db.query(Image).filter(Image.owner_id == user_id)
+            query = self.db.query(Image).filter(Image.owner_id == user_id, Image.is_deleted == False)
             if filter_type == 'date' and filter_value:
                 # Filter by specific date (YYYY-MM-DD)
                 try:

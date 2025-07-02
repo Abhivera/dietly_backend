@@ -320,17 +320,14 @@ async def delete_image(
     current_user = Depends(get_current_user)
 ):
     """
-    Delete an image
+    Soft delete an image (set is_deleted=True)
     """
     try:
         image_service = ImageService(db)
         result = image_service.delete_image(image_id, current_user.id)
-        
         if "error" in result:
             raise HTTPException(status_code=404, detail=result["error"])
-        
         return result
-        
     except HTTPException:
         raise
     except Exception as e:
