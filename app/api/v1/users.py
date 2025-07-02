@@ -39,7 +39,7 @@ def read_users(
     current_user: User = Depends(get_current_superuser),
     db: Session = Depends(get_db)
 ):
-    users = db.query(User).offset(skip).limit(limit).all()
+    users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
     return users
 
 @router.get("/{user_id}", response_model=UserResponse)
@@ -48,10 +48,33 @@ def read_user(
     current_user: User = Depends(get_current_superuser),
     db: Session = Depends(get_db)
 ):
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
     return user
+
+@router.delete("/{user_id}")
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(get_current_superuser),
+    db: Session = Depends(get_db)
+):
+    """
+    Soft delete a user and cascade soft delete to images, password reset tokens, and email verification tokens.
+    """
+    user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_deleted = True
+    # Cascade soft delete
+    for image in user.images:
+        image.is_deleted = True
+    for token in user.password_reset_tokens:
+        token.is_deleted = True
+    for token in user.email_verification_tokens:
+        token.is_deleted = True
+    db.commit()
+    return {"success": True, "message": f"User {user_id} and related data soft-deleted."}
