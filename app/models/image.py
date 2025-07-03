@@ -37,8 +37,6 @@ class Image(Base):
     # Relationship
     owner = relationship("User", back_populates="images")
     
-    is_deleted = Column(Boolean, default=False)
-    
     def to_dict(self):
         """Convert model to dictionary including analysis data"""
         calories = self.estimated_calories or 0

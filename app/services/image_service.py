@@ -281,12 +281,11 @@ class ImageService:
         return await self.analyze_existing_image(image_id, user_id)
 
     def delete_image(self, image_id: int, user_id: int) -> Dict:
-        """Soft delete image (set is_deleted=True) and delete from S3"""
+        """Delete image and remove from S3"""
         try:
             image = self.db.query(Image).filter(
                 Image.id == image_id,
-                Image.owner_id == user_id,
-                Image.is_deleted == False
+                Image.owner_id == user_id
             ).first()
 
             if not image:
@@ -296,13 +295,13 @@ class ImageService:
             if not s3_deleted:
                 logger.warning(f"Failed to delete S3 object: {image.s3_key}")
 
-            image.is_deleted = True
+            self.db.delete(image)
             self.db.commit()
 
-            return {"success": True, "message": "Image soft-deleted successfully"}
+            return {"success": True, "message": "Image deleted successfully"}
 
         except Exception as e:
-            logger.error(f"Error soft-deleting image: {str(e)}")
+            logger.error(f"Error deleting image: {str(e)}")
             self.db.rollback()
             return {"error": f"Delete failed: {str(e)}"}
 
@@ -311,8 +310,7 @@ class ImageService:
         try:
             image = self.db.query(Image).filter(
                 Image.id == image_id,
-                Image.owner_id == user_id,
-                Image.is_deleted == False
+                Image.owner_id == user_id
             ).first()
             if not image:
                 return None
@@ -331,7 +329,7 @@ class ImageService:
         Supports filtering by date, week, or month. Only one filter is allowed at a time, with priority: date > week > month.
         """
         try:
-            query = self.db.query(Image).filter(Image.owner_id == user_id, Image.is_deleted == False)
+            query = self.db.query(Image).filter(Image.owner_id == user_id)
             if filter_type == 'date' and filter_value:
                 # Filter by specific date (YYYY-MM-DD)
                 try:

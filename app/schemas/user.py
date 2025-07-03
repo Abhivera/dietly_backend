@@ -7,8 +7,6 @@ class UserBase(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_-]+$")
     full_name: Optional[str] = Field(None, max_length=100)
-    avatar_url: Optional[str] = None
-    is_verified: bool = False
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
@@ -34,12 +32,10 @@ class UserUpdate(BaseModel):
 
 class UserInDB(UserBase):
     id: int
-    is_active: bool = True
     is_superuser: bool = False
     avatar_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    is_verified: bool = False
     
     class Config:
         from_attributes = True
@@ -54,7 +50,6 @@ class UserProfile(BaseModel):
     username: str
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
-    is_active: bool
     created_at: datetime
     
     class Config:

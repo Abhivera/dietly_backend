@@ -12,6 +12,7 @@ from app.models.password_reset import PasswordResetToken
 from app.models.email_verfication import EmailVerificationToken
 from app.schemas.user import UserCreate
 from app.services.email_service import EmailService
+from app.core.config import settings
 
 class AuthService:
     def __init__(self, db: Session):
@@ -49,6 +50,7 @@ class AuthService:
             username=user_create.username,
             full_name=user_create.full_name,
             hashed_password=hashed_password,
+            avatar_url=settings.default_avatar_url,
         )
         self.db.add(db_user)
         self.db.commit()
@@ -168,7 +170,6 @@ class AuthService:
         if not verification_token:
             return False
         user = verification_token.user
-        user.is_verified = True
         verification_token.is_used = True
         self.db.commit()
         return True
@@ -212,10 +213,8 @@ class AuthService:
             username=pending.username,
             full_name=pending.full_name,
             hashed_password=pending.hashed_password,
-            avatar_url=pending.avatar_url,
-            is_active=True,
-            is_superuser=False,
-            is_verified=True
+            avatar_url=settings.default_avatar_url,
+            is_superuser=False
         )
         self.db.add(user)
         self.db.delete(pending)
