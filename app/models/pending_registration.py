@@ -14,6 +14,5 @@ class PendingRegistration(Base):
     token = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False)
-    is_deleted = Column(Boolean, default=False)
     def __repr__(self):
         return f"<PendingRegistration(id={self.id}, email='{self.email}', username='{self.username}')>"

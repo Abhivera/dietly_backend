@@ -14,6 +14,8 @@ from io import BytesIO
 from PIL import Image
 from pydantic import BaseModel
 from app.models.image import Image
+import logging
+from PIL import Image as PILImage
 
 router = APIRouter()
 
@@ -44,10 +46,11 @@ async def upload_and_analyze_image(
         
         # Validate that it's actually an image
         try:
-            img = Image.open(BytesIO(content))
+            img = PILImage.open(BytesIO(content))
             img.verify()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid image file")
+        except Exception as e:
+            logging.error(f"Image validation failed: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid image file: {e}")
         
         # Create a BytesIO object from the content for the service
         file_obj = BytesIO(content)
@@ -320,7 +323,7 @@ async def delete_image(
     current_user = Depends(get_current_user)
 ):
     """
-    Soft delete an image (set is_deleted=True)
+    Hard delete an image (remove from database)
     """
     try:
         image_service = ImageService(db)

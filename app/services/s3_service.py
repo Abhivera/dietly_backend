@@ -170,15 +170,14 @@ class S3Service:
             # Reset file pointer to beginning
             file_obj.seek(0)
             
-            # Upload to S3 with public read ACL
+            # Upload to S3 WITHOUT ACL
             self.s3_client.upload_fileobj(
                 file_obj,
                 self.bucket_name,
                 unique_filename,
                 ExtraArgs={
                     'ContentType': self._get_content_type(file_extension),
-                    'ServerSideEncryption': 'AES256',
-                    'ACL': 'public-read'  # This makes the file publicly readable
+                    'ServerSideEncryption': 'AES256'
                 }
             )
             
