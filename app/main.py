@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, users, images, meal
+from app.api.v1 import auth, users, images, meal, public_food_analysis
 from app.core.config import settings
 
 app = FastAPI(
@@ -23,6 +23,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(images.router, prefix="/api/v1/images", tags=["images"])
 app.include_router(meal.router, prefix="/api/v1/meal", tags=["meal"])
+app.include_router(public_food_analysis.router, prefix="/api/v1/public", tags=["public-food-analysis"])
 
 @app.get("/")
 def read_root():
