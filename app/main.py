@@ -23,7 +23,7 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 app.include_router(images.router, prefix="/api/v1/images", tags=["images"])
 app.include_router(meal.router, prefix="/api/v1/meal", tags=["meal"])
-app.include_router(public_food_analysis.router, prefix="/api/v1/public", tags=["public-food-analysis"])
+app.include_router(public_food_analysis.router, prefix="/api/v1/public", tags=["public api"])
 
 @app.get("/")
 def read_root():

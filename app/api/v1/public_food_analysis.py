@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, UploadFile, File, Request
+from fastapi import APIRouter, HTTPException, UploadFile, File, Request, Form
 from typing import Dict, Any
 import logging
 from pathlib import Path
@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 @router.post("/analyze-food")
 async def analyze_food_image(
     file: UploadFile = File(...),
-    request: Request = None
+    
+    request: Request = None,
+    description: str = Form(None)
 ):
     """
     Analyze a food image and return nutritional information.
@@ -71,9 +73,9 @@ async def analyze_food_image(
             temp_file.write(content)
             temp_file.close()
             
-            # Analyze the image using LLMService
+            # Analyze the image using LLMService, passing description if provided
             llm_service = LLMService()
-            analysis = await llm_service.analyze_image(temp_file.name)
+            analysis = await llm_service.analyze_image(temp_file.name, description=description)
             
             # Format the response
             response = {

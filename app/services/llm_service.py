@@ -188,9 +188,10 @@ class LLMService:
                 logger.error(f"HTTP {response.status_code}: {str(e)}")
                 raise Exception(f"Gemini API HTTP error: {response.status_code}")
 
-    async def analyze_image(self, image_path: str) -> Dict[str, any]:
+    async def analyze_image(self, image_path: str, description: str = None) -> Dict[str, any]:
         """
         Analyze a food image from file path and return nutritional information.
+        Optionally use a user-provided description for more context.
         """
         logger.info(f"Starting image analysis for: {image_path}")
         
@@ -199,7 +200,7 @@ class LLMService:
             base64_image, mime_type = self._encode_image_from_path(image_path)
             logger.info(f"Image encoded successfully. MIME type: {mime_type}")
             
-            return await self._analyze_image_with_data(base64_image, mime_type)
+            return await self._analyze_image_with_data(base64_image, mime_type, description=description)
             
         except Exception as e:
             logger.error(f"Error in analyze_image: {str(e)}", exc_info=True)
@@ -222,32 +223,43 @@ class LLMService:
             logger.error(f"Error in analyze_image_content: {str(e)}", exc_info=True)
             return self._get_error_response(str(e))
 
-    async def _analyze_image_with_data(self, base64_image: str, mime_type: str) -> Dict[str, any]:
+    async def _analyze_image_with_data(self, base64_image: str, mime_type: str, description: str = None) -> Dict[str, any]:
         """
         Core method to analyze image with base64 data and MIME type.
+        Optionally use a user-provided description for more context.
+        Now requests and expects a 'food_items_details' field: array of objects with 'name', 'count', and 'per_item_calories'.
         """
         try:
+            # Prepare prompt text
+            prompt_text = (
+                "Analyze this image carefully and determine if it contains food items. "
+                "Return ONLY a valid JSON object (no markdown formatting) with these exact keys:\n"
+                "- 'is_food': boolean (true if image contains any food items, false if not)\n"
+                "- 'food_items': array of detected food item names as strings (empty array if no food)\n"
+                "- 'food_items_details': array of objects, each with 'name' (string), 'count' (int), and 'per_item_calories' (int, estimated calories per item; 0 if not food or unknown)\n"
+                "- 'description': single sentence describing what's in the image, including the number of each food item if possible\n"
+                "- 'calories': estimated total calories as a number (0 if no food)\n"
+                "- 'nutrients': object with keys 'protein', 'carbs', 'fat', 'sugar' (all numbers in grams, all 0 if no food)\n"
+                "- 'confidence': confidence score between 0 and 1\n"
+                "- 'exercise_recommendations': object with keys 'steps' (int, number of steps to burn calories) and 'walking_km' (float, km to walk to burn calories)\n\n"
+                "Example for food image:\n"
+                '{"is_food":true,"food_items":["samosa","chutney"],"food_items_details":[{"name":"samosa","count":5,"per_item_calories":300},{"name":"chutney","count":1,"per_item_calories":0}],"description":"The image shows 5 samosas and 1 chutney on a plate.","calories":1500,"nutrients":{"protein":30,"carbs":150,"fat":90,"sugar":15},"confidence":0.95,"exercise_recommendations":{"steps":30000,"walking_km":30.0}}\n\n'
+                "Example for non-food image:\n"
+                '{"is_food":false,"food_items":[],"food_items_details":[],"description":"A person sitting in a chair","calories":0,"nutrients":{"protein":0,"carbs":0,"fat":0,"sugar":0},"confidence":0.90,"exercise_recommendations":{"steps":0,"walking_km":0.0}}'
+            )
+            if description:
+                prompt_text = (
+                    f"The user provided this description for context: '{description}'. "
+                    f"Use this information to help with the analysis if relevant. "
+                    + prompt_text
+                )
             # Prepare payload
             payload = {
                 "contents": [
                     {
                         "parts": [
                             {
-                                "text": (
-                                    "Analyze this image carefully and determine if it contains food items. "
-                                    "Return ONLY a valid JSON object (no markdown formatting) with these exact keys:\n"
-                                    "- 'is_food': boolean (true if image contains any food items, false if not)\n"
-                                    "- 'food_items': array of detected food item names as strings (empty array if no food)\n"
-                                    "- 'description': single sentence describing what's in the image\n"
-                                    "- 'calories': estimated total calories as a number (0 if no food)\n"
-                                    "- 'nutrients': object with keys 'protein', 'carbs', 'fat', 'sugar' (all numbers in grams, all 0 if no food)\n"
-                                    "- 'confidence': confidence score between 0 and 1\n"
-                                    "- 'exercise_recommendations': object with keys 'steps' (int, number of steps to burn calories) and 'walking_km' (float, km to walk to burn calories)\n\n"
-                                    "Example for food image:\n"
-                                    '{"is_food":true,"food_items":["apple","banana"],"description":"Fresh fruits on a plate","calories":120,"nutrients":{"protein":1,"carbs":30,"fat":0,"sugar":25},"confidence":0.85,"exercise_recommendations":{"steps":2400,"walking_km":2.4}}\n\n'
-                                    "Example for non-food image:\n"
-                                    '{"is_food":false,"food_items":[],"description":"A person sitting in a chair","calories":0,"nutrients":{"protein":0,"carbs":0,"fat":0,"sugar":0},"confidence":0.90,"exercise_recommendations":{"steps":0,"walking_km":0.0}}'
-                                )
+                                "text": prompt_text
                             },
                             {
                                 "inline_data": {
@@ -288,8 +300,8 @@ class LLMService:
             return self._get_error_response(str(e))
 
     def _validate_and_fix_result(self, result: Dict) -> Dict:
-        """Validate result structure and add missing keys with defaults"""
-        required_keys = ['is_food', 'food_items', 'description', 'calories', 'nutrients', 'confidence', 'exercise_recommendations']
+        """Validate result structure and add missing keys with defaults, including food_items_details"""
+        required_keys = ['is_food', 'food_items', 'food_items_details', 'description', 'calories', 'nutrients', 'confidence', 'exercise_recommendations']
         
         for key in required_keys:
             if key not in result:
@@ -297,6 +309,8 @@ class LLMService:
                 if key == 'is_food':
                     result[key] = False
                 elif key == 'food_items':
+                    result[key] = []
+                elif key == 'food_items_details':
                     result[key] = []
                 elif key == 'description':
                     result[key] = "Image analyzed"
