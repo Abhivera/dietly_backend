@@ -1,7 +1,8 @@
 # api/auth.py
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -16,6 +17,7 @@ from app.schemas.auth import (
 from app.schemas.user import UserCreate, UserResponse, UserProfile
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
+from app.services.google_oauth_service import oauth
 from app.models.user import User
 
 router = APIRouter()
@@ -185,3 +187,50 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+@router.get("/google/login")
+async def google_login(request: Request):
+    redirect_uri = settings.google_redirect_uri
+    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+@router.get("/google/callback")
+async def google_callback(request: Request, db: Session = Depends(get_db)):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        user_info = await oauth.google.parse_id_token(request, token)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Google authentication failed")
+
+    email = user_info.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email not available from Google")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # Username fallback: use email prefix
+        username = email.split("@")[0]
+        # Ensure username is unique
+        base_username = username
+        i = 1
+        while db.query(User).filter(User.username == username).first():
+            username = f"{base_username}{i}"
+            i += 1
+        user = User(
+            email=email,
+            username=username,
+            full_name=user_info.get("name"),
+            avatar_url=user_info.get("picture"),
+            hashed_password="google_oauth_no_password",  # Mark as Google user
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    # Issue JWT using existing logic
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        subject=user.username, expires_delta=access_token_expires
+    )
+    # Redirect to frontend with token (or return JSON)
+    frontend_url = f"https://dietly.org/auth/google/success?token={access_token}"
+    return RedirectResponse(frontend_url)
