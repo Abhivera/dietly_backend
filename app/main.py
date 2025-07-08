@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, users, images, meal, public_food_analysis
 from app.core.config import settings
+from starlette.middleware.sessions import SessionMiddleware
 
 app = FastAPI(
     title="FastAPI Image Analysis App",
@@ -17,6 +18,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add SessionMiddleware for OAuth support
+app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
