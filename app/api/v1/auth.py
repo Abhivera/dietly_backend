@@ -200,6 +200,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     try:
         # Get the authorization code
         token = await oauth.google.authorize_access_token(request)
+        print("GOOGLE TOKEN:", token)  # Debug print
         
         # Method 1: Try to get user info from token directly
         if 'id_token' in token:
