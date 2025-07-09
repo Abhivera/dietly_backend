@@ -19,8 +19,8 @@ class ImageService:
         self.llm_service = LLMService()
         self.s3_service = S3Service()
 
-    async def upload_and_analyze_image(self, file_obj, user_id: int, original_filename: str, file_size: int, content_type: str) -> Dict:
-        """Upload image to S3 and analyze it using content from memory"""
+    async def upload_and_analyze_image(self, file_obj, user_id: int, original_filename: str, file_size: int, content_type: str, user_description: str = None) -> Dict:
+        """Upload image to S3 and analyze it using content from memory. Optionally use user description."""
         try:
             # Reset file pointer to beginning
             file_obj.seek(0)
@@ -57,6 +57,13 @@ class ImageService:
             analysis = await self.llm_service.analyze_image_content(image_content, content_type)
             print(f"Analysis result: {analysis}")
 
+            # If user_description is provided, append or use it in the analysis description
+            if user_description:
+                if analysis.get('description'):
+                    analysis['description'] = f"{analysis['description']} (User note: {user_description})"
+                else:
+                    analysis['description'] = f"User note: {user_description}"
+
             # Calculate exercise recommendations dynamically
             calories = analysis.get('calories', 0)
             exercise_recommendations = analysis.get(
@@ -66,12 +73,14 @@ class ImageService:
 
             # Update image with analysis results
             image.is_food = analysis.get('is_food', False)
+            image.is_meal = True if image.is_food else False  # Set is_meal True if is_food is True
             image.analysis_description = analysis.get('description')
             image.food_items = analysis.get('food_items', [])
             image.estimated_calories = calories
             image.nutrients = analysis.get('nutrients', {})
             image.analysis_confidence = analysis.get('confidence', 0.0)
             image.analysis_completed = datetime.now(timezone.utc)
+            image.description = analysis.get('description')  # Set top-level description
 
             self.db.commit()
             self.db.refresh(image)

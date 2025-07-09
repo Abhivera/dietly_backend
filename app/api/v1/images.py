@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Body, Form
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.image_service import ImageService
@@ -28,6 +28,7 @@ class IsMealUpdateRequest(BaseModel):
 @router.post("/upload-and-analyze")
 async def upload_and_analyze_image(
     file: UploadFile = File(...),
+    description: str = Form(None),  # Optional text field
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
@@ -66,165 +67,22 @@ async def upload_and_analyze_image(
             original_filename=original_filename,
             file_size=file_size,
             content_type=content_type,
-            user_id=current_user.id
+            user_id=current_user.id,
+            user_description=description  # Pass the optional description
         )
         
         if "error" in result:
             raise HTTPException(status_code=500, detail=result["error"])
         
+        # Include the user-provided description in the response if present
+        if description:
+            result["user_description"] = description
         return result
         
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-@router.post("/upload-and-analyze-local-first")
-async def upload_and_analyze_local_first(
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """
-    Analyze locally first, then upload to S3 - most reliable approach
-    """
-    temp_path = None
-    try:
-        # Validate file type
-        if not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
-        
-        # Read file content
-        content = await file.read()
-        
-        # Validate image
-        try:
-            img = Image.open(BytesIO(content))
-            img.verify()
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid image file")
-        
-        # Save to temporary file for analysis
-        file_extension = Path(file.filename).suffix
-        temp_filename = f"temp_{uuid.uuid4()}{file_extension}"
-        temp_path = os.path.join(UPLOAD_DIR, temp_filename)
-        
-        with open(temp_path, "wb") as f:
-            f.write(content)
-        
-        # Analyze the image first using LLMService directly
-        from app.services.llm_service import LLMService
-        llm_service = LLMService()
-        analysis = await llm_service.analyze_image(temp_path)
-        
-        # Now upload to S3 with analysis
-        file_obj = BytesIO(content)
-        image_service = ImageService(db)
-        
-        upload_result = await image_service.upload_image_with_analysis(
-            file_obj=file_obj,
-            original_filename=file.filename,
-            file_size=len(content),
-            content_type=file.content_type,
-            user_id=current_user.id,
-            analysis=analysis
-        )
-        
-        if "error" in upload_result:
-            raise HTTPException(status_code=500, detail=upload_result["error"])
-        
-        return {
-            "success": True,
-            "image": upload_result.get("image"),
-            "analysis": {
-                "is_food": analysis.get('is_food', False),
-                "food_items": analysis.get('food_items', []),
-                "description": analysis.get('description'),
-                "calories": analysis.get('calories', 0),
-                "nutrients": analysis.get('nutrients', {}),
-                "confidence": analysis.get('confidence', 0.0),
-                "exercise_recommendations": analysis.get('exercise_recommendations', {"steps": int(analysis.get('calories', 0)*20), "walking_km": round(analysis.get('calories', 0)/50, 2)}),
-                "completed_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload and analysis failed: {str(e)}")
-    finally:
-        # Clean up temp file
-        if temp_path and os.path.exists(temp_path):
-            os.remove(temp_path)
-
-# @router.post("/analyze-only")
-# async def analyze_image_only(
-#     file: UploadFile = File(...),
-#     current_user = Depends(get_current_user)
-# ):
-#     """
-#     Analyze image and return results without storing in database
-#     """
-#     temp_path = None
-#     try:
-#         # Validate file type
-#         if not file.content_type.startswith('image/'):
-#             raise HTTPException(status_code=400, detail="File must be an image")
-        
-#         # Read and validate file content
-#         content = await file.read()
-        
-#         try:
-#             img = Image.open(BytesIO(content))
-#             img.verify()
-#         except Exception:
-#             raise HTTPException(status_code=400, detail="Invalid image file")
-        
-#         # Analyze using LLMService directly with content
-#         from app.services.llm_service import LLMService
-#         llm_service = LLMService()
-#         analysis = await llm_service.analyze_image_content(content, file.content_type)
-        
-#         # Return the analysis directly
-#         return {
-#             "success": True,
-#             "analysis": {
-#                 "food_items": analysis.get('food_items', []),
-#                 "description": analysis.get('description'),
-#                 "calories": analysis.get('calories', 0),
-#                 "nutrients": analysis.get('nutrients', {}),
-#                 "confidence": analysis.get('confidence', 0.0),
-#                 "is_food": analysis.get('is_food', False)
-#             }
-#         }
-        
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
-# @router.post("/{image_id}/analyze")
-# async def analyze_existing_image(
-#     image_id: int,
-#     db: Session = Depends(get_db),
-#     current_user = Depends(get_current_user)
-# ):
-#     """
-#     Analyze an existing image for food content
-#     """
-#     try:
-#         image_service = ImageService(db)
-#         result = await image_service.analyze_existing_image(image_id, current_user.id)
-        
-#         if "error" in result:
-#             raise HTTPException(status_code=404, detail=result["error"])
-        
-#         return result
-        
-#     except HTTPException:
-#         raise
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @router.get("/{image_id}")
 async def get_image_with_analysis(
@@ -274,6 +132,8 @@ async def get_image_with_fresh_url(
         raise HTTPException(status_code=500, detail=f"Failed to retrieve image: {str(e)}")
 
 @router.get("/")
+
+
 async def get_user_images(
     skip: int = 0,
     limit: int = 20,
@@ -393,7 +253,7 @@ async def get_all_images_by_user(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve images: {str(e)}")
 
-@router.patch("/{image_id}/is-meal")
+@router.patch("/is-meal/{image_id}")
 async def update_is_meal(
     image_id: int,
     req: IsMealUpdateRequest,
