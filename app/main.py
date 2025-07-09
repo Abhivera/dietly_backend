@@ -13,7 +13,10 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['https://dietly.org'],  # Only allow your frontend
+    allow_origins=[
+        'https://dietly.org',
+        'https://www.dietly.org'
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
