@@ -199,7 +199,8 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         token = await oauth.google.authorize_access_token(request)
         user_info = await oauth.google.parse_id_token(request, token)
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Google authentication failed")
+        # Show the real error for debugging
+        raise HTTPException(status_code=400, detail=f"Google authentication failed: {str(e)}")
 
     email = user_info.get("email")
     if not email:
