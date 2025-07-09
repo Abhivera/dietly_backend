@@ -268,5 +268,5 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     )
     
     # Redirect to frontend with token
-    frontend_url = f"https://dietly.org/auth/google/success?token={access_token}"
-    return RedirectResponse(frontend_url)
+    redirect_frontend_url = f"{settings.frontend_url}/auth/google/success?token={access_token}"
+    return RedirectResponse(redirect_frontend_url)

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     from_email: Optional[str]
 
   
-    # Frontend URL for password reset links
+    # Frontend URL
     frontend_url: str 
     
     # Rate limiting
@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     google_client_id: str   
     google_client_secret: str
     google_redirect_uri: str 
+
     
     class Config:
         env_file = ".env"

@@ -12,4 +12,4 @@ oauth.register(
         'response_type': 'code',
         'prompt': 'select_account'  # Optional: always show account selection
     },
-) 
+)   
