@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, users, images, meal, public_food_analysis
-from app.core.config import settings
 from starlette.middleware.sessions import SessionMiddleware
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.models.pending_registration import PendingRegistration
 from app.core.database import SessionLocal
+from app.core.config import settings
 import threading, time
 
 app = FastAPI(
@@ -18,9 +18,7 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-       'https://www.dietly.org'
-    ],
+    allow_origins=[settings.frontend_url],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
