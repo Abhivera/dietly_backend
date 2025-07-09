@@ -3,6 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, users, images, meal, public_food_analysis
 from app.core.config import settings
 from starlette.middleware.sessions import SessionMiddleware
+from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+from app.models.pending_registration import PendingRegistration
+from app.core.database import SessionLocal
+import threading, time
 
 app = FastAPI(
     title="FastAPI Image Analysis App",
@@ -14,8 +19,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        'https://dietly.org',
-        'https://www.dietly.org'
+       'https://www.dietly.org'
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -39,3 +43,21 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+def cleanup_pending_registrations():
+    db: Session = SessionLocal()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=1)
+        db.query(PendingRegistration).filter(PendingRegistration.created_at < cutoff).delete()
+        db.commit()
+    finally:
+        db.close()
+
+def schedule_cleanup():
+    while True:
+        cleanup_pending_registrations()
+        time.sleep(3600)  # Run every hour
+
+@app.on_event("startup")
+def start_cleanup_task():
+    threading.Thread(target=schedule_cleanup, daemon=True).start()
