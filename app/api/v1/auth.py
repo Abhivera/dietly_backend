@@ -248,8 +248,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             username=username,
             full_name=user_info.get("name", ""),
             avatar_url=user_info.get("picture"),
-            hashed_password="google_oauth_no_password",  # Mark as Google user
-            is_verified=True  # Google accounts are pre-verified
+            hashed_password="google_oauth_no_password"  # Mark as Google user
         )
         db.add(user)
         try:
