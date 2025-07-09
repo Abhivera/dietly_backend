@@ -190,48 +190,83 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
 
 @router.get("/google/login")
 async def google_login(request: Request):
+    """Redirect to Google OAuth"""
     redirect_uri = settings.google_redirect_uri
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @router.get("/google/callback")
 async def google_callback(request: Request, db: Session = Depends(get_db)):
+    """Handle Google OAuth callback"""
     try:
+        # Get the authorization code
         token = await oauth.google.authorize_access_token(request)
-        user_info = await oauth.google.parse_id_token(request, token)
+        
+        # Method 1: Try to get user info from token directly
+        if 'id_token' in token:
+            user_info = await oauth.google.parse_id_token(request, token)
+        else:
+            # Method 2: Fallback to userinfo endpoint
+            user_info = await oauth.google.parse_id_token(request, token)
+            if not user_info:
+                # Method 3: Manual request to userinfo endpoint
+                async with oauth.google.client.get('https://www.googleapis.com/oauth2/v2/userinfo', 
+                                                  headers={'Authorization': f'Bearer {token["access_token"]}'}) as response:
+                    user_info = await response.json()
+                    
     except Exception as e:
-        # Show the real error for debugging
-        raise HTTPException(status_code=400, detail=f"Google authentication failed: {str(e)}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Google authentication failed: {str(e)}"
+        )
+
+    # Check if we got the required user info
+    if not user_info or 'email' not in user_info:
+        raise HTTPException(
+            status_code=400, 
+            detail="Unable to retrieve user information from Google"
+        )
 
     email = user_info.get("email")
     if not email:
         raise HTTPException(status_code=400, detail="Email not available from Google")
 
+    # Check if user already exists
     user = db.query(User).filter(User.email == email).first()
+    
     if not user:
-        # Username fallback: use email prefix
+        # Create new user
         username = email.split("@")[0]
-        # Ensure username is unique
         base_username = username
         i = 1
         while db.query(User).filter(User.username == username).first():
             username = f"{base_username}{i}"
             i += 1
+            
         user = User(
             email=email,
             username=username,
-            full_name=user_info.get("name"),
+            full_name=user_info.get("name", ""),
             avatar_url=user_info.get("picture"),
             hashed_password="google_oauth_no_password",  # Mark as Google user
+            is_verified=True  # Google accounts are pre-verified
         )
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="Error creating user account"
+            )
 
-    # Issue JWT using existing logic
+    # Create JWT token
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         subject=user.username, expires_delta=access_token_expires
     )
-    # Redirect to frontend with token (or return JSON)
+    
+    # Redirect to frontend with token
     frontend_url = f"https://dietly.org/auth/google/success?token={access_token}"
     return RedirectResponse(frontend_url)
