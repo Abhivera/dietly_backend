@@ -198,32 +198,32 @@ async def google_login(request: Request):
 async def google_callback(request: Request, db: Session = Depends(get_db)):
     """Handle Google OAuth callback"""
     try:
-        # Get the authorization code
         token = await oauth.google.authorize_access_token(request)
         print("GOOGLE TOKEN:", token)  # Debug print
-        
-        # Method 1: Try to get user info from token directly
-        if 'id_token' in token:
-            user_info = await oauth.google.parse_id_token(request, token)
-        else:
-            # Method 2: Fallback to userinfo endpoint
-            user_info = await oauth.google.parse_id_token(request, token)
-            if not user_info:
-                # Method 3: Manual request to userinfo endpoint
-                async with oauth.google.client.get('https://www.googleapis.com/oauth2/v2/userinfo', 
-                                                  headers={'Authorization': f'Bearer {token["access_token"]}'}) as response:
+
+        # Use userinfo if present
+        user_info = token.get('userinfo')
+        if not user_info:
+            # Try to parse id_token if userinfo is not present
+            if 'id_token' in token:
+                user_info = await oauth.google.parse_id_token(request, token)
+            else:
+                # Fallback to userinfo endpoint
+                async with oauth.google.client.get(
+                    'https://www.googleapis.com/oauth2/v2/userinfo',
+                    headers={'Authorization': f'Bearer {token["access_token"]}'}
+                ) as response:
                     user_info = await response.json()
-                    
+
     except Exception as e:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail=f"Google authentication failed: {str(e)}"
         )
 
-    # Check if we got the required user info
     if not user_info or 'email' not in user_info:
         raise HTTPException(
-            status_code=400, 
+            status_code=400,
             detail="Unable to retrieve user information from Google"
         )
 
