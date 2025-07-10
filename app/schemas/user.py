@@ -7,6 +7,10 @@ class UserBase(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50, pattern="^[a-zA-Z0-9_-]+$")
     full_name: Optional[str] = Field(None, max_length=100)
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    weight: Optional[int] = None
+    height: Optional[int] = None
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
@@ -29,6 +33,10 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(None, max_length=100)
     password: Optional[str] = Field(None, min_length=8, max_length=100)
     avatar_url: Optional[str] = None
+    gender: Optional[str] = None
+    age: Optional[int] = None
+    weight: Optional[int] = None
+    height: Optional[int] = None
 
 class UserInDB(UserBase):
     id: int

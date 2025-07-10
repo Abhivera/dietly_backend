@@ -42,6 +42,18 @@ def read_root():
 def health_check():
     return {"status": "healthy"}
 
+@app.get("/health/db")
+def database_health_check():
+    """Check database connection health"""
+    try:
+        db = SessionLocal()
+        # Try a simple query to test connection
+        db.execute("SELECT 1")
+        db.close()
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+
 def cleanup_pending_registrations():
     db: Session = SessionLocal()
     try:

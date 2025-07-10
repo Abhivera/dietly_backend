@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 
-from app.core.database import get_db
+from app.core.database import get_db, SessionLocal
 from app.core.security import create_access_token
 from app.api.deps import get_current_user
 from app.core.config import settings
@@ -231,34 +231,67 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     if not email:
         raise HTTPException(status_code=400, detail="Email not available from Google")
 
-    # Check if user already exists
-    user = db.query(User).filter(User.email == email).first()
+    # Check if user already exists with retry logic for database connection issues
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            user = db.query(User).filter(User.email == email).first()
+            break
+        except OperationalError as e:
+            if attempt == max_retries - 1:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Database connection error. Please try again."
+                )
+            # Refresh the session and retry
+            db.close()
+            db = SessionLocal()
+            continue
     
     if not user:
         # Create new user
         username = email.split("@")[0]
         base_username = username
         i = 1
-        while db.query(User).filter(User.username == username).first():
-            username = f"{base_username}{i}"
-            i += 1
+        
+        # Check for username availability with retry logic
+        for attempt in range(max_retries):
+            try:
+                while db.query(User).filter(User.username == username).first():
+                    username = f"{base_username}{i}"
+                    i += 1
+                break
+            except OperationalError as e:
+                if attempt == max_retries - 1:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Database connection error. Please try again."
+                    )
+                # Refresh the session and retry
+                db.close()
+                db = SessionLocal()
+                continue
             
         user = User(
             email=email,
             username=username,
             full_name=user_info.get("name", ""),
             avatar_url=user_info.get("picture"),
-            hashed_password="google_oauth_no_password"  # Mark as Google user
+            hashed_password="google_oauth_no_password",  # Mark as Google user
+            gender=user_info.get("gender"),
+            age=user_info.get("age"),
+            weight=user_info.get("weight"),
+            height=user_info.get("height"),
         )
         db.add(user)
         try:
             db.commit()
             db.refresh(user)
-        except IntegrityError:
+        except (IntegrityError, OperationalError) as e:
             db.rollback()
             raise HTTPException(
                 status_code=400,
-                detail="Error creating user account"
+                detail="Error creating user account. Please try again."
             )
 
     # Create JWT token

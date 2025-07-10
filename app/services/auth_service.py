@@ -51,6 +51,10 @@ class AuthService:
             full_name=user_create.full_name,
             hashed_password=hashed_password,
             avatar_url=settings.default_avatar_url,
+            gender=user_create.gender,
+            age=user_create.age,
+            weight=user_create.weight,
+            height=user_create.height,
         )
         self.db.add(db_user)
         self.db.commit()
@@ -190,6 +194,10 @@ class AuthService:
             full_name=user_create.full_name,
             hashed_password=hashed_password,
             avatar_url=None,
+            gender=user_create.gender,
+            age=user_create.age,
+            weight=user_create.weight,
+            height=user_create.height,
             token=token,
             expires_at=expires_at
         )
@@ -214,7 +222,11 @@ class AuthService:
             full_name=pending.full_name,
             hashed_password=pending.hashed_password,
             avatar_url=settings.default_avatar_url,
-            is_superuser=False
+            is_superuser=False,
+            gender=pending.gender if hasattr(pending, 'gender') else None,
+            age=pending.age if hasattr(pending, 'age') else None,
+            weight=pending.weight if hasattr(pending, 'weight') else None,
+            height=pending.height if hasattr(pending, 'height') else None,
         )
         self.db.add(user)
         self.db.delete(pending)
