@@ -282,6 +282,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             age=user_info.get("age"),
             weight=user_info.get("weight"),
             height=user_info.get("height"),
+            goal_weight=user_info.get("goal_weight"),
         )
         db.add(user)
         try:

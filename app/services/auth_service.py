@@ -55,6 +55,7 @@ class AuthService:
             age=user_create.age,
             weight=user_create.weight,
             height=user_create.height,
+            goal_weight=user_create.goal_weight,
         )
         self.db.add(db_user)
         self.db.commit()
@@ -198,6 +199,7 @@ class AuthService:
             age=user_create.age,
             weight=user_create.weight,
             height=user_create.height,
+            goal_weight=user_create.goal_weight,
             token=token,
             expires_at=expires_at
         )
@@ -227,6 +229,7 @@ class AuthService:
             age=pending.age if hasattr(pending, 'age') else None,
             weight=pending.weight if hasattr(pending, 'weight') else None,
             height=pending.height if hasattr(pending, 'height') else None,
+            goal_weight=pending.goal_weight if hasattr(pending, 'goal_weight') else None,
         )
         self.db.add(user)
         self.db.delete(pending)

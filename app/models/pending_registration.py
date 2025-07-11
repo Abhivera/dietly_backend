@@ -15,6 +15,7 @@ class PendingRegistration(Base):
     age = Column(Integer, nullable=True)
     weight = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
+    goal_weight = Column(Integer, nullable=True)
     token = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False)

@@ -11,6 +11,7 @@ class UserBase(BaseModel):
     age: Optional[int] = None
     weight: Optional[int] = None
     height: Optional[int] = None
+    goal_weight: Optional[int] = None
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
@@ -37,6 +38,7 @@ class UserUpdate(BaseModel):
     age: Optional[int] = None
     weight: Optional[int] = None
     height: Optional[int] = None
+    goal_weight: Optional[int] = None
 
 class UserInDB(UserBase):
     id: int

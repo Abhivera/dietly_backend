@@ -22,6 +22,7 @@ class User(Base):
     age = Column(Integer, nullable=True)
     weight = Column(Integer, nullable=True)
     height = Column(Integer, nullable=True)
+    goal_weight = Column(Integer, nullable=True)
     
     # Relationships
     images = relationship("Image", back_populates="owner", cascade="all, delete-orphan")
