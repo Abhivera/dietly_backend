@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, users, images, meal, public_food_analysis
+from app.api.v1 import api_router
 from starlette.middleware.sessions import SessionMiddleware
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -27,12 +27,8 @@ app.add_middleware(
 # Add SessionMiddleware for OAuth support
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 
-# Include routers
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
-app.include_router(images.router, prefix="/api/v1/images", tags=["images"])
-app.include_router(meal.router, prefix="/api/v1/meal", tags=["meal"])
-app.include_router(public_food_analysis.router, prefix="/api/v1/public", tags=["public api"])
+# Include API router
+app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/")
 def read_root():

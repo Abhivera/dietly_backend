@@ -9,9 +9,9 @@ class UserBase(BaseModel):
     full_name: Optional[str] = Field(None, max_length=100)
     gender: Optional[str] = None
     age: Optional[int] = None
-    weight: Optional[int] = None
-    height: Optional[int] = None
-    goal_weight: Optional[int] = None
+    weight: Optional[float] = None
+    height: Optional[float] = None
+    goal_weight: Optional[float] = None
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8, max_length=100)
@@ -36,9 +36,9 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     gender: Optional[str] = None
     age: Optional[int] = None
-    weight: Optional[int] = None
-    height: Optional[int] = None
-    goal_weight: Optional[int] = None
+    weight: Optional[float] = None
+    height: Optional[float] = None
+    goal_weight: Optional[float] = None
 
 class UserInDB(UserBase):
     id: int

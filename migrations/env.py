@@ -19,7 +19,7 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from app.core.database import Base
-from app.models import user, image , password_reset,email_verfication,pending_registration
+from app.models import user, image , password_reset,email_verfication,pending_registration,user_calories
 
 # Set target_metadata for autogenerate
 target_metadata = Base.metadata
