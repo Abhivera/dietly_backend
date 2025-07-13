@@ -9,12 +9,40 @@ from app.schemas.user_calories import (
     UserCaloriesCreate, 
     UserCaloriesUpdate, 
     UserCaloriesResponse, 
-    UserCaloriesSummary
+    UserCaloriesSummary,
+    ActivityCalories
 )
 from app.models.user import User
 from app.models.user_calories import UserCalories
 
 router = APIRouter()
+
+def calculate_total_calories(calories_burned: List[ActivityCalories]) -> int:
+    """Calculate total calories from activities list"""
+    total = 0
+    for activity in calories_burned:
+        try:
+            total += int(activity.calories)
+        except ValueError:
+            # Skip invalid calorie values
+            continue
+    return total
+
+def create_activities_summary(calories_entries: List[UserCalories]) -> dict:
+    """Create summary of calories by activity type"""
+    activities_summary = {}
+    
+    for entry in calories_entries:
+        if entry.calories_burned:
+            for activity in entry.calories_burned:
+                activity_name = activity.get("activity_name", "Unknown")
+                try:
+                    calories = int(activity.get("calories", 0))
+                    activities_summary[activity_name] = activities_summary.get(activity_name, 0) + calories
+                except (ValueError, TypeError):
+                    continue
+    
+    return activities_summary
 
 @router.post("/", response_model=UserCaloriesResponse)
 def create_user_calories(
@@ -35,10 +63,13 @@ def create_user_calories(
             detail=f"Calorie entry already exists for date {calories_data.activity_date}"
         )
     
+    # Convert activities to JSON format
+    activities_json = [activity.dict() for activity in calories_data.calories_burned]
+    
     db_calories = UserCalories(
         user_id=current_user.id,
         activity_date=calories_data.activity_date,
-        calories_burn=calories_data.calories_burn
+        calories_burned=activities_json
     )
     
     db.add(db_calories)
@@ -114,7 +145,37 @@ def update_user_calories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update a specific calorie entry"""
+    """
+    Update a specific calorie entry
+    
+    This endpoint allows you to update an existing calorie entry. You can update:
+    - The activity date
+    - The list of activities and calories burned
+    
+    **Validation Rules:**
+    - Activity names cannot be empty or exceed 100 characters
+    - Calories must be valid numbers between 0 and 10,000
+    - No duplicate activity names allowed
+    - Total daily calories cannot exceed 5,000
+    - Activity date cannot be in the future
+    
+    **Example Request Body:**
+    ```json
+    {
+      "activity_date": "2024-01-15",
+      "calories_burned": [
+        {
+          "activity_name": "running",
+          "calories": "250"
+        },
+        {
+          "activity_name": "cycling", 
+          "calories": "180"
+        }
+      ]
+    }
+    ```
+    """
     calories = db.query(UserCalories).filter(
         UserCalories.id == calories_id,
         UserCalories.user_id == current_user.id
@@ -142,12 +203,35 @@ def update_user_calories(
                 detail=f"Calorie entry already exists for date {update_data['activity_date']}"
             )
     
-    for field, value in update_data.items():
-        setattr(calories, field, value)
+    # Robustly handle both dicts and Pydantic models for calories_burned
+    if "calories_burned" in update_data:
+        new_activities = []
+        for activity in update_data["calories_burned"]:
+            if hasattr(activity, "dict"):
+                new_activities.append(activity.dict())
+            elif isinstance(activity, dict):
+                new_activities.append(activity)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Invalid activity format in calories_burned"
+                )
+        update_data["calories_burned"] = new_activities
     
-    db.commit()
-    db.refresh(calories)
-    return calories
+    try:
+        for field, value in update_data.items():
+            setattr(calories, field, value)
+        
+        db.commit()
+        db.refresh(calories)
+        return calories
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update calorie entry: {str(e)}"
+        )
 
 @router.delete("/{calories_id}")
 def delete_user_calories(
@@ -186,28 +270,38 @@ def get_user_calories_summary(
             detail="Start date must be before or equal to end date"
         )
     
-    # Get total calories and count
-    result = db.query(
-        func.sum(UserCalories.calories_burn).label('total_calories'),
-        func.count(UserCalories.id).label('entries_count')
-    ).filter(
+    # Get all entries in the date range
+    calories_entries = db.query(UserCalories).filter(
         UserCalories.user_id == current_user.id,
         UserCalories.activity_date >= start_date,
         UserCalories.activity_date <= end_date
-    ).first()
+    ).all()
     
-    total_calories = result.total_calories or 0
-    entries_count = result.entries_count or 0
+    entries_count = len(calories_entries)
+    
+    # Calculate total calories from all activities
+    total_calories = 0
+    for entry in calories_entries:
+        if entry.calories_burned:
+            for activity in entry.calories_burned:
+                try:
+                    total_calories += int(activity.get("calories", 0))
+                except (ValueError, TypeError):
+                    continue
     
     # Calculate average
     average_calories = total_calories / entries_count if entries_count > 0 else 0
+    
+    # Create activities summary
+    activities_summary = create_activities_summary(calories_entries)
     
     return UserCaloriesSummary(
         total_calories_burned=total_calories,
         average_calories_per_day=average_calories,
         date_range_start=start_date,
         date_range_end=end_date,
-        entries_count=entries_count
+        entries_count=entries_count,
+        activities_summary=activities_summary
     )
 
 @router.get("/summary/recent", response_model=UserCaloriesSummary)
@@ -220,26 +314,36 @@ def get_recent_calories_summary(
     end_date = date.today()
     start_date = end_date - timedelta(days=days - 1)
     
-    # Get total calories and count
-    result = db.query(
-        func.sum(UserCalories.calories_burn).label('total_calories'),
-        func.count(UserCalories.id).label('entries_count')
-    ).filter(
+    # Get all entries in the date range
+    calories_entries = db.query(UserCalories).filter(
         UserCalories.user_id == current_user.id,
         UserCalories.activity_date >= start_date,
         UserCalories.activity_date <= end_date
-    ).first()
+    ).all()
     
-    total_calories = result.total_calories or 0
-    entries_count = result.entries_count or 0
+    entries_count = len(calories_entries)
+    
+    # Calculate total calories from all activities
+    total_calories = 0
+    for entry in calories_entries:
+        if entry.calories_burned:
+            for activity in entry.calories_burned:
+                try:
+                    total_calories += int(activity.get("calories", 0))
+                except (ValueError, TypeError):
+                    continue
     
     # Calculate average
     average_calories = total_calories / entries_count if entries_count > 0 else 0
+    
+    # Create activities summary
+    activities_summary = create_activities_summary(calories_entries)
     
     return UserCaloriesSummary(
         total_calories_burned=total_calories,
         average_calories_per_day=average_calories,
         date_range_start=start_date,
         date_range_end=end_date,
-        entries_count=entries_count
+        entries_count=entries_count,
+        activities_summary=activities_summary
     ) 
