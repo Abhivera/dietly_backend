@@ -1,6 +1,6 @@
 # api/auth.py
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request, Body
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -19,6 +19,10 @@ from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.services.google_oauth_service import oauth
 from app.models.user import User
+import httpx
+import io
+import uuid
+from app.services.s3_service import S3Service
 
 router = APIRouter()
 
@@ -231,6 +235,27 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     if not email:
         raise HTTPException(status_code=400, detail="Email not available from Google")
 
+    # Download and upload Google avatar to S3
+    google_image_url = user_info.get("picture")
+    avatar_s3_url = None
+    if google_image_url:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(google_image_url)
+                response.raise_for_status()
+                image_bytes = response.content
+            # Use a UUID for user_id since user does not exist yet
+            temp_user_id = str(uuid.uuid4())
+            file_obj = io.BytesIO(image_bytes)
+            s3_service = S3Service()
+            upload_result = s3_service.upload_file_with_public_access(file_obj, temp_user_id, "avatar.jpg")
+            if upload_result.get('success'):
+                avatar_s3_url = upload_result.get('file_url')
+            else:
+                avatar_s3_url = None
+        except Exception:
+            avatar_s3_url = None
+
     # Check if user already exists with retry logic for database connection issues
     max_retries = 3
     for attempt in range(max_retries):
@@ -276,7 +301,7 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
             email=email,
             username=username,
             full_name=user_info.get("name", ""),
-            avatar_url=user_info.get("picture"),
+            avatar_url=avatar_s3_url,
             hashed_password="google_oauth_no_password",  # Mark as Google user
             gender=user_info.get("gender"),
             age=user_info.get("age"),
@@ -304,3 +329,110 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
     # Redirect to frontend with token
     redirect_frontend_url = f"{settings.frontend_url}/auth/google/success?token={access_token}"
     return RedirectResponse(redirect_frontend_url)
+
+@router.post("/google/mobile", response_model=Token)
+async def google_mobile_login(
+    id_token: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """
+    Mobile endpoint: Accepts Google id_token, verifies it, creates/fetches user, returns JWT token.
+    """
+    import httpx
+    from app.models.user import User
+    from app.services.s3_service import S3Service
+    import io, uuid
+    from sqlalchemy.exc import IntegrityError, OperationalError
+    from app.core.security import create_access_token
+    from app.core.config import settings
+    from datetime import timedelta
+
+    # 1. Verify id_token with Google
+    async with httpx.AsyncClient() as client:
+        google_resp = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": id_token}
+        )
+        if google_resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Invalid Google token")
+        user_info = google_resp.json()
+
+    email = user_info.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email not available from Google")
+
+    # Download and upload Google avatar to S3 (optional)
+    google_image_url = user_info.get("picture")
+    avatar_s3_url = None
+    if google_image_url:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(google_image_url)
+                response.raise_for_status()
+                image_bytes = response.content
+            temp_user_id = str(uuid.uuid4())
+            file_obj = io.BytesIO(image_bytes)
+            s3_service = S3Service()
+            upload_result = s3_service.upload_file_with_public_access(file_obj, temp_user_id, "avatar.jpg")
+            if upload_result.get('success'):
+                avatar_s3_url = upload_result.get('file_url')
+        except Exception:
+            avatar_s3_url = None
+
+    # Check if user already exists
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            user = db.query(User).filter(User.email == email).first()
+            break
+        except OperationalError:
+            if attempt == max_retries - 1:
+                raise HTTPException(status_code=500, detail="Database connection error. Please try again.")
+            db.close()
+            db = SessionLocal()
+            continue
+    else:
+        user = None
+
+    if not user:
+        username = email.split("@")[0]
+        base_username = username
+        i = 1
+        for attempt in range(max_retries):
+            try:
+                while db.query(User).filter(User.username == username).first():
+                    username = f"{base_username}{i}"
+                    i += 1
+                break
+            except OperationalError:
+                if attempt == max_retries - 1:
+                    raise HTTPException(status_code=500, detail="Database connection error. Please try again.")
+                db.close()
+                db = SessionLocal()
+                continue
+        user = User(
+            email=email,
+            username=username,
+            full_name=user_info.get("name", ""),
+            avatar_url=avatar_s3_url,
+            hashed_password="google_oauth_no_password",
+            gender=user_info.get("gender"),
+            age=user_info.get("age"),
+            weight=user_info.get("weight"),
+            height=user_info.get("height"),
+            goal_weight=user_info.get("goal_weight"),
+        )
+        db.add(user)
+        try:
+            db.commit()
+            db.refresh(user)
+        except (IntegrityError, OperationalError):
+            db.rollback()
+            raise HTTPException(status_code=400, detail="Error creating user account. Please try again.")
+
+    # Create JWT token
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        subject=user.username, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}

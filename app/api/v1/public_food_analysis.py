@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 @router.post("/analyze-food")
 async def analyze_food_image(
     file: UploadFile = File(...),
-    
     request: Request = None,
     description: str = Form(None)
 ):

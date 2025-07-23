@@ -8,7 +8,7 @@ class UserCalories(Base):
     __tablename__ = "user_calories"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     activity_date = Column(Date, nullable=False, index=True)
     calories_burned = Column(JSON, nullable=False)  # Store as JSON array
     
